@@ -24,6 +24,7 @@ struct BoundingBox
     std::vector<LidarPoint> lidarPoints; // Lidar 3D points which project into 2D image roi
     std::vector<cv::KeyPoint> keypoints; // keypoints enclosed by 2D roi
     std::vector<cv::DMatch> kptMatches; // keypoint matches enclosed by 2D roi
+
 };
 
 struct DataFrame
@@ -40,7 +41,6 @@ struct DataFrame
     std::vector<cv::KeyPoint> keypoints; // 2D keypoints within camera image
     cv::Mat descriptors; // keypoint descriptors
     std::vector<cv::DMatch> kptMatches; // keypoint matches between previous and current frame
-    std::vector<LidarPoint> lidarPoints;
 
     std::vector<BoundingBox> boundingBoxes; // ROI around detected objects in 2D image coordinates
     std::map<int,int> bbMatches; // bounding box matches between previous and current frame

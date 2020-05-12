@@ -7,6 +7,7 @@
 
 #include "camFusion.hpp"
 #include "dataStructures.h" // Calibration
+#include <map>
 
 using namespace std;
 
@@ -107,9 +108,9 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
         // augment object with some key data
         char str1[200], str2[200];
         sprintf(str1, "id=%d, #pts=%d", it1->boxID, (int)it1->lidarPoints.size());
-        putText(topviewImg, str1, cv::Point2f(left-250, bottom+50), cv::FONT_ITALIC, 1, currColor);
+        putText(topviewImg, str1, cv::Point2f(left, bottom+50), cv::FONT_ITALIC, 0.8, currColor);
         sprintf(str2, "xmin=%2.2f m, yw=%2.2f m", xwmin, ywmax-ywmin);
-        putText(topviewImg, str2, cv::Point2f(left-250, bottom+125), cv::FONT_ITALIC, 1, currColor);  
+        putText(topviewImg, str2, cv::Point2f(left, bottom+100), cv::FONT_ITALIC, 0.8, currColor);  
     }
 
     // plot distance markers
@@ -125,46 +126,234 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
     string windowName = "3D Objects";
     cv::namedWindow(windowName, 1);
     cv::imshow(windowName, topviewImg);
-
-    if(bWait)
-    {
-        cv::waitKey(0); // wait for key to be pressed
-    }
 }
 
 
 // associate a given bounding box with the keypoints it contains
-void clusterKptMatchesWithROI(const BoundingBox &boundingBox,
+void clusterKptMatchesWithROI(BoundingBox &boundingBox,
                               const std::vector<cv::KeyPoint> &kptsPrev,
                               const std::vector<cv::KeyPoint> &kptsCurr,
                               const std::vector<cv::DMatch> &kptMatches)
 {
-    // ...
+    unsigned int numKeypointsAdded = 0;
+    // iterate over all kptMatches. Check if both prevKpt and currKpt are contained within bounding box
+    for (auto match :  kptMatches)
+    {
+        auto currKpt = kptsCurr[match.trainIdx];
+        auto prevKpt = kptsPrev[match.queryIdx];
+        
+        // check if both keypoints are inside bounding box
+        if (boundingBox.roi.contains(currKpt.pt)
+            && boundingBox.roi.contains(prevKpt.pt))
+        {
+            boundingBox.kptMatches.push_back(match);
+            numKeypointsAdded++;
+        }
+    }
+    cout << "Number of keypoint matches added to bounding box " << boundingBox.boxID <<  ": " << numKeypointsAdded << endl;
 }
-
 
 // Compute time-to-collision (TTC) based on keypoint correspondences in successive images
-void computeTTCCamera(const std::vector<cv::KeyPoint> &kptsPrev, const std::vector<cv::KeyPoint> &kptsCurr, 
-                      const std::vector<cv::DMatch> kptMatches, const double frameRate, double &TTC, cv::Mat *visImg)
+double computeTTCCamera(const std::vector<cv::KeyPoint> &kptsPrev,
+                      const std::vector<cv::KeyPoint> &kptsCurr,
+                      const std::vector<cv::DMatch> kptMatches,
+                        const double frameRate)
 {
-    // ...
+    double TTC = 0.0;
+    // compute distance ratios between all matched keypoints
+    vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
+    for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1)
+    { // outer kpt. loop
+
+        // get current keypoint and its matched partner in the prev. frame
+        cv::KeyPoint kpOuterCurr = kptsCurr.at(it1->trainIdx);
+        cv::KeyPoint kpOuterPrev = kptsPrev.at(it1->queryIdx);
+
+        for (auto it2 = kptMatches.begin() + 1; it2 != kptMatches.end(); ++it2)
+        { // inner kpt.-loop
+
+            double minDist = 100.0; // min. required distance
+
+            // get next keypoint and its matched partner in the prev. frame
+            cv::KeyPoint kpInnerCurr = kptsCurr.at(it2->trainIdx);
+            cv::KeyPoint kpInnerPrev = kptsPrev.at(it2->queryIdx);
+
+            // compute distances and distance ratios
+            double distCurr = cv::norm(kpOuterCurr.pt - kpInnerCurr.pt);
+            double distPrev = cv::norm(kpOuterPrev.pt - kpInnerPrev.pt);
+
+            if (distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
+            { // avoid division by zero
+
+                double distRatio = distCurr / distPrev;
+                distRatios.push_back(distRatio);
+            }
+        } // eof inner loop over all matched kpts
+    }     // eof outer loop over all matched kpts
+
+    // only continue if list of distance ratios is not empty
+    if (distRatios.size() == 0)
+    {
+        TTC = NAN;
+        cout << __FUNCTION__ << "Warning: list of distance ratios is empty!" << endl;
+        return TTC;
+    }
+
+    // compute camera-based TTC from distance ratios
+    double meanDistRatio = std::accumulate(distRatios.begin(), distRatios.end(), 0.0) / distRatios.size();
+    // compute median distance ratio
+    std::sort(distRatios.begin(), distRatios.end());
+    double medianDistRatio = distRatios[distRatios.size()/2];
+
+    // cout << "mean is : " << meanDistRatio << "\n";
+    // cout << "median is : " << medianDistRatio << "\n";
+
+    double dT = 1 / frameRate;
+    TTC = -dT / (1 - medianDistRatio);
+    return TTC;
+}
+
+double GetMedianX(const std::vector<LidarPoint> &lidarPoints)
+{
+    std::vector<double> values;
+    for (auto& pt : lidarPoints) values.push_back(pt.x);
+        
+    std::sort(values.begin(), values.end());
+    return values[values.size()/2];
+}
+
+double computeTTCLidar(const std::vector<LidarPoint> &lidarPointsPrev,
+                       const std::vector<LidarPoint> &lidarPointsCurr,
+                       const double frameRate)
+{
+    double TTC = 0.0;
+    // auxiliary variables
+    double dT = 1.0 / frameRate ; // time between two measurements in seconds
+
+    // find closest distance to Lidar points 
+    double medXCurr = GetMedianX(lidarPointsCurr);
+    double medXPrev = GetMedianX(lidarPointsPrev);
+
+    // compute TTC from both measurements
+    TTC = medXCurr * dT / (medXPrev - medXCurr);
+    return TTC;
+}
+
+// return index of first bounding box that contains the keypoint
+int FindBboxId(const cv::KeyPoint& currKpt, const std::vector<BoundingBox>& bboxes)
+{
+    // check which bounding box contains the given keypoint
+    for (int i = 0; i < bboxes.size(); ++i)
+    {
+        if (bboxes[i].roi.contains(currKpt.pt))
+            return bboxes[i].boxID;
+    }
+    return -1;
+}
+
+// Function tp find the Entry with largest Value in a Map 
+int FindBoxIdWithMostMatches( std::map<int, int> sampleMap) 
+{ 
+    // Reference variable to help find 
+    // the entry with the highest value 
+    std::pair<int, int> entryWithMaxValue = std::make_pair(-1, 0);
+  
+    // Iterate in the map to find the required entry 
+    std::map<int, int>::iterator currentEntry; 
+    for (currentEntry = sampleMap.begin(); currentEntry != sampleMap.end(); ++currentEntry)
+        if (currentEntry->second > entryWithMaxValue.second)
+            entryWithMaxValue = make_pair( currentEntry->first, currentEntry->second); 
+  
+    return entryWithMaxValue.first; 
 }
 
 
-void computeTTCLidar(const std::vector<LidarPoint> &lidarPointsPrev,
-                     const std::vector<LidarPoint> &lidarPointsCurr,
-                     const double frameRate, double &TTC)
+
+// show the bounding box indices for each frame so I know if they are matched correctly
+void VisualizeBboxMatches(const DataFrame& frame, std::string name)
 {
-    // ...
+
+    cv::Mat visImg = frame.cameraImg.clone();
+    int idx = 0;
+    for(auto it = frame.boundingBoxes.begin(); it != frame.boundingBoxes.end(); ++it)
+    {
+        // Draw rectangle displaying the bounding box
+        int top, left, width, height;
+        top = (*it).roi.y;
+        left = (*it).roi.x;
+        width = (*it).roi.width;
+        height = (*it).roi.height;
+        cv::rectangle(visImg, cv::Point(left, top), cv::Point(left+width, top+height),cv::Scalar(0, 255, 0), 2);
+
+        std::string label = "bbox: " + std::to_string(idx++);
+        //string label = cv::format("%.2f", (*it).confidence);
+        //label = classes[((*it).classID)] + ":" + label;
+        
+        // Display label at the top of the bounding box
+        int baseLine;
+        cv::Size labelSize = getTextSize(label, cv::FONT_ITALIC, 0.5, 1, &baseLine);
+        top = max(top, labelSize.height);
+        rectangle(visImg, cv::Point(left, top - round(1.5*labelSize.height)), cv::Point(left + round(1.5*labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
+        cv::putText(visImg, label, cv::Point(left, top), cv::FONT_ITALIC, 0.75, cv::Scalar(0,0,0),1);
+    }
+
+    cv::imshow(name, visImg);
 }
 
 
-void matchBoundingBoxes(std::vector<cv::DMatch> &matches,
-                        std::map<int, int> &bbBestMatches,
-                        DataFrame &prevFrame,
-                        DataFrame &currFrame)
+// match bounding boxes between current dataframe and last dataframe
+// based on keypoint correspondences
+std::map<int, int> matchBoundingBoxes(const DataFrame& prevFrame,
+                                       const DataFrame& currFrame)
 {
-    // ...
+    std::map<int,int> bboxBestMatches;
+    std::multimap<int, int> bboxMatches;
+    // for each match in keypoint match vector of current frame
+    for (auto match :  currFrame.kptMatches)
+    {
+        auto currKpt = currFrame.keypoints[match.trainIdx];
+        auto prevKpt = prevFrame.keypoints[match.queryIdx];
+        
+        // find index of enclosing bbox (if any) in current frame for current frame keypoint
+        int bboxIdCurr = FindBboxId(currKpt, currFrame.boundingBoxes);
+
+        // find index of enclosing bbox (if any) in prev frame for prev frame keypoint
+        int bboxIdPrev = FindBboxId(prevKpt, prevFrame.boundingBoxes);
+
+        // if either keypoint is not enclosed by bounding box, then skip 
+        if (bboxIdCurr == -1 || bboxIdPrev == -1)
+            continue;
+
+        // increment number of matches for currentBbox -> prevBbox
+        bboxMatches.emplace(bboxIdCurr, bboxIdPrev);
+    }
+
+    // process the multimap for each bounding box in currFrame
+    cout << "Printing out bbox matches:" << "\n";
+    // iterate over each bounding box from current frame and find the best match to bounding box in previous frame
+    //for (int currBoxId = 0; currBoxId < currFrame.boundingBoxes.size(); ++currBoxIdx)
+    for (auto& bbox : currFrame.boundingBoxes)
+    {
+        // create new std::map
+        std::map<int,int> prevBboxIdToNumMatches;
+        // for each entry in bboxMatches multimap
+        for (auto match : bboxMatches)
+        {
+            //  increment number of matches for prevBboxIdx
+            if (match.first == bbox.boxID)
+                prevBboxIdToNumMatches[match.second]++;
+        }
+        int bestPrevBboxId = FindBoxIdWithMostMatches(prevBboxIdToNumMatches);
+        bboxBestMatches.emplace(bestPrevBboxId, bbox.boxID);
+
+        cout << "BBox from current frame: " << bbox.boxID << "\n";
+        cout << "BBox from prev frame: " << bestPrevBboxId << "\n";
+        cout << "\n";
+    }
 
     cout << "#8 : TRACK 3D OBJECT BOUNDING BOXES done" << endl;
+    // VisualizeBboxMatches(prevFrame, "Previous image bboxes");
+    // VisualizeBboxMatches(currFrame, "Current image bboxes");
+
+    return bboxBestMatches;
 }

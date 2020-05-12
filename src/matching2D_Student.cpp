@@ -199,7 +199,6 @@ std::vector<cv::KeyPoint> DetectorShiTomasi::DetectKeypoints(const cv::Mat& img,
         string windowName = "Shi-Tomasi Corner Detector Results";
         cv::namedWindow(windowName, 6);
         imshow(windowName, visImage);
-        cv::waitKey(0);
     }
     return keypoints;
 }

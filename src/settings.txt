@@ -11,7 +11,7 @@ matcherType=MAT_BF
 selectorType=SEL_KNN
 
 # only use keypoints found within rectangular region
-bFocusOnVehicle=1
+bFocusOnVehicle=0
 
 # descriptor matching norm. Use Hamming for binary descriptors, L1 or L2 for gradient descriptors (otherwise program will crash)
 # NORM_L1 : 2

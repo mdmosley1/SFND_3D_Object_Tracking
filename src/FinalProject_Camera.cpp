@@ -36,7 +36,7 @@ string imgBasePath = dataPath + "images/";
 string imgPrefix = "KITTI/2011_09_26/image_02/data/000000"; // left camera, color
 string imgFileType = ".png";
 int imgStartIndex = 0; // first file index to load (assumes Lidar and camera names have identical naming convention)
-int imgEndIndex = 18;   // last file index to load
+int imgEndIndex = 45;   // last file index to load
 int imgStepWidth = 1; 
 int imgFillWidth = 4;  // no. of digits which make up the file index (e.g. img-0001.png)
 
@@ -63,22 +63,13 @@ void AddToRingBuffer(const DataFrame& frame)
         dataBuffer_g.erase(dataBuffer_g.begin());
 }
 
-void ComputeTTC(const BoundingBox& prevBB, const BoundingBox& currBB, const double sensorFrameRate, const Calibration& cal)
+void ComputeTTC(const BoundingBox& prevBB, BoundingBox& currBB, const double sensorFrameRate, const Calibration& cal)
 {
-    //// STUDENT ASSIGNMENT
-    //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
-    double ttcLidar; 
-    computeTTCLidar(prevBB.lidarPoints, currBB.lidarPoints, sensorFrameRate, ttcLidar);
-    //// EOF STUDENT ASSIGNMENT
-
-    //// STUDENT ASSIGNMENT
-    //// TASK FP.3 -> assign enclosed keypoint matches to bounding box (implement -> clusterKptMatchesWithROI)
-    //// TASK FP.4 -> compute time-to-collision based on camera (implement -> computeTTCCamera)
-    double ttcCamera;
-    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints, (dataBuffer_g.end() - 1)->kptMatches);                    
-    computeTTCCamera((dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints, currBB.kptMatches, sensorFrameRate, ttcCamera);
-    //// EOF STUDENT ASSIGNMENT
-
+    double ttcLidar = computeTTCLidar(prevBB.lidarPoints, currBB.lidarPoints, sensorFrameRate);
+    cout << "TTC lidar = " << ttcLidar << "\n";
+    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints, (dataBuffer_g.end() - 1)->kptMatches);    double ttcCamera = computeTTCCamera((dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints,currBB.kptMatches,sensorFrameRate);
+    cout << "TTC camera = " << ttcCamera << "\n";
+    
     bool bVis = true;
     if (bVis)
     {
@@ -98,7 +89,10 @@ void ComputeTTC(const BoundingBox& prevBB, const BoundingBox& currBB, const doub
     }
 }
 
-void ComputeAllTTCs(const DataFrame& lastFrame, const DataFrame& newFrame, const double sensorFrameRate, const Calibration& cal)
+void ComputeAllTTCs(const DataFrame& lastFrame,
+                    const DataFrame& newFrame,
+                    const double sensorFrameRate,
+                    const Calibration& cal)
 {
     for (auto it1 = newFrame.bbMatches.begin(); it1 != newFrame.bbMatches.end(); ++it1)
     {
@@ -151,7 +145,8 @@ Calibration InitializeCalibration()
 std::vector<BoundingBox> GetClassifiedBoundingBoxesFromImage(cv::Mat img)
 {
     static float confThreshold = 0.2;
-    static float nmsThreshold = 0.4;
+    //static float nmsThreshold = 0.4;
+    static float nmsThreshold = 0.1;
     bool bVis = true;
     auto boundingBoxes = detectObjects(img,
                                        confThreshold,
@@ -218,27 +213,30 @@ int main(int argc, const char *argv[])
         
         AddLidarPointsToBoxes(boundingBoxes, lidarPoints, shrinkFactor, cal);
 
-        if(true) show3DObjects(boundingBoxes, cv::Size(4.0, 20.0), cv::Size(900,900), true);        
+        //if(true) show3DObjects(boundingBoxes, cv::Size(4.0, 20.0), cv::Size(900,900), true);
+        if(true) show3DObjects(boundingBoxes, cv::Size(10.0, 20.0), cv::Size(900,900), true);        
         
         DataFrame newFrame = DetectAndDescribeFeatures(img, detector, descriptor, params);
-        newFrame.lidarPoints = lidarPoints;
+
+        newFrame.boundingBoxes = boundingBoxes;
         
         AddToRingBuffer(newFrame);
         
         if (dataBuffer_g.size() > 1) // wait until at least two images have been processed
         {
             auto lastFrame = dataBuffer_g.end() - 2;
-            newFrame.kptMatches = featureTracker.TrackFeatures(*lastFrame, newFrame);
+            auto currentFrame = dataBuffer_g.end() - 1;
+            currentFrame->kptMatches = featureTracker.TrackFeatures(*lastFrame, *currentFrame);
 
-            // TRACK 3D OBJECT BOUNDING BOXES 
-            map<int, int> bbBestMatches;
-            matchBoundingBoxes(newFrame.kptMatches, bbBestMatches, *lastFrame, newFrame); // associate bounding boxes between current and previous frame using keypoint matches
+            // TRACK 3D OBJECT BOUNDING BOXES
+            // associate bounding boxes between current and previous frame using keypoint matches
+            map<int, int> bbBestMatches = matchBoundingBoxes(*lastFrame, *currentFrame); 
 
             // store matches in current data frame
-            (dataBuffer_g.end()-1)->bbMatches = bbBestMatches;
+            currentFrame->bbMatches = bbBestMatches;
 
             // loop over all BB match pairs to compute time to collision (TTC)
-            ComputeAllTTCs(*lastFrame, newFrame, sensorFrameRate, cal);
+            ComputeAllTTCs(*lastFrame, *currentFrame, sensorFrameRate, cal);
         }
     }
     return 0;

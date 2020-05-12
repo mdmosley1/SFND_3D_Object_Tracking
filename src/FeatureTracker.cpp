@@ -128,6 +128,6 @@ void FeatureTracker::VisualizeMatches(const DataFrame& lastFrame, const DataFram
     cv::namedWindow(windowName, 7);
     cv::imshow(windowName, matchImg);
     cout << "Press key to continue to next image" << endl;
-    cv::waitKey(params_m.cvWaitTime); // wait for key to be pressed
+    //cv::waitKey(params_m.cvWaitTime); // wait for key to be pressed
 }
 
