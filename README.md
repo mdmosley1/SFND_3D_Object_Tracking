@@ -4,6 +4,9 @@ This is the Final report for the camera/lidar based 3D object tracking
 project. Below I describe the performance of the time to collision
 (TTC) estimates for lidar and camera individually.
 
+## FP.1 Match 3D Objects   
+3D-bounding boxes are matched between frames based on the number of point correspondences. This was implemented [here](https://github.com/mdmosley1/SFND_3D_Object_Tracking/blob/85dd3622030d08074ffcc4e7cf4fd66dd1becc61/src/camFusion_Student.cpp#L306-L352)
+
 ## Performance Evaluation 1: Lidar TTC
 There are some instances where the TTC increases from one frame to the
 next, even though this is probably innaccurate. One contributing
