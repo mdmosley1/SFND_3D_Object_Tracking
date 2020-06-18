@@ -10,6 +10,9 @@ project. Below I describe the performance of the time to collision
 ## FP.2 Compute Lidar-based TTC
 Lidar-based TTC was computed based on the equation presented in the lecture. The median values of the pointclouds were used in order to be statistically robust. The implementation can be found [here](https://github.com/mdmosley1/SFND_3D_Object_Tracking/blob/52341807253d542a692eae6881be3d5b2acd9273/src/camFusion_Student.cpp#L225-L252).
 
+## FP.3 Associate Keypoint Correspondences with Bounding Boxes
+Keypoints were associated with bounding boxes by using OpenCV's Rect::contains() method to check if a keypoints lies inside a bounding box's ROI. This was implemented [here](https://github.com/mdmosley1/SFND_3D_Object_Tracking/blob/fef73100fc5ba0dc40b46d45b37f0210ba69ff0b/src/camFusion_Student.cpp#L133-L154).
+
 ## Performance Evaluation 1: Lidar TTC
 There are some instances where the TTC increases from one frame to the
 next, even though this is probably innaccurate. One contributing
