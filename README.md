@@ -1,4 +1,4 @@
-# MidTerm Report:
+# Final Report:
 
 This is the Final report for the camera/lidar based 3D object tracking
 project. Below I describe the performance of the time to collision
