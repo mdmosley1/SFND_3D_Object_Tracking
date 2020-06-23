@@ -13,6 +13,9 @@ Lidar-based TTC was computed based on the equation presented in the lecture. The
 ## FP.3 Associate Keypoint Correspondences with Bounding Boxes
 Keypoints were associated with bounding boxes by using OpenCV's Rect::contains() method to check if a keypoints lies inside a bounding box's ROI. This was implemented [here](https://github.com/mdmosley1/SFND_3D_Object_Tracking/blob/fef73100fc5ba0dc40b46d45b37f0210ba69ff0b/src/camFusion_Student.cpp#L133-L154).
 
+## FP.4 Compute Camera-based TTC
+Camera-based TTC was determined by computing distance ratios between feature pairs in the current image and last image. The mean distance ratio was used in the TTC equation to provide a statistically robust TTC estimate. This was implemented [here](https://github.com/mdmosley1/SFND_3D_Object_Tracking/blob/92b7c415fc1eaf4c571b1376a98337f1cf6a8fef/src/camFusion_Student.cpp#L157-L214).
+
 ## Performance Evaluation 1: Lidar TTC
 There are some instances where the TTC increases from one frame to the
 next, even though this is probably innaccurate. One contributing
