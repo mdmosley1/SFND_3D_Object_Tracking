@@ -63,11 +63,16 @@ void AddToRingBuffer(const DataFrame& frame)
         dataBuffer_g.erase(dataBuffer_g.begin());
 }
 
-void ComputeTTC(const BoundingBox& prevBB, BoundingBox& currBB, const double sensorFrameRate, const Calibration& cal)
+void ComputeTTC(const BoundingBox& prevBB, const BoundingBox& _currBB, const double sensorFrameRate, const Calibration& cal)
 {
+    // make copy since this gets modified to add kpts 
+    BoundingBox currBB = _currBB;
+    
     double ttcLidar = computeTTCLidar(prevBB.lidarPoints, currBB.lidarPoints, sensorFrameRate);
     cout << "TTC lidar = " << ttcLidar << "\n";
-    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints, (dataBuffer_g.end() - 1)->kptMatches);    double ttcCamera = computeTTCCamera((dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints,currBB.kptMatches,sensorFrameRate);
+
+    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints, (dataBuffer_g.end() - 1)->kptMatches);
+    double ttcCamera = computeTTCCamera((dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints,currBB.kptMatches,sensorFrameRate);
     cout << "TTC camera = " << ttcCamera << "\n";
     
     bool bVis = true;
@@ -89,28 +94,36 @@ void ComputeTTC(const BoundingBox& prevBB, BoundingBox& currBB, const double sen
     }
 }
 
-void ComputeAllTTCs(const DataFrame& lastFrame,
-                    const DataFrame& newFrame,
-                    const double sensorFrameRate,
-                    const Calibration& cal)
+BoundingBox const* GetBoxWithID(const DataFrame& frame, int id)
+{
+    for (auto& box : frame.boundingBoxes)
+        if (box.boxID == id) // check whether current match partner corresponds to this BB
+            return &box;
+    return nullptr;
+}
+
+std::tuple<const BoundingBox*,const BoundingBox*> FindEgoLaneBoundingBoxes(const DataFrame& lastFrame,
+                                                               const DataFrame& newFrame)
 {
     for (auto it1 = newFrame.bbMatches.begin(); it1 != newFrame.bbMatches.end(); ++it1)
     {
         // find bounding boxes associates with current match
-        BoundingBox prevBB, currBB;
+        const BoundingBox* currBB = GetBoxWithID(newFrame, it1->second);
+        const BoundingBox* prevBB = GetBoxWithID(lastFrame, it1->first);
+        
+        if (currBB == nullptr || prevBB == nullptr)
+            continue;
 
-        for (auto& bboxNew : newFrame.boundingBoxes)
-            if (it1->second == bboxNew.boxID) // check wether current match partner corresponds to this BB
-                currBB = bboxNew;
-
-        for (auto& bboxLast : lastFrame.boundingBoxes)
-            if (it1->first == bboxLast.boxID) // check wether current match partner corresponds to this BB
-                prevBB = bboxLast;
-
-        // compute TTC for current match
-        if( currBB.lidarPoints.size() > 0 && prevBB.lidarPoints.size() > 0 ) // only compute TTC if we have Lidar points
-            ComputeTTC(prevBB, currBB, sensorFrameRate, cal);
+        // We are only interested in the bounding boxes which have
+        // lidar points, since these correspond to the vehicle in the
+        // ego lane
+        if( currBB->lidarPoints.size() > 0 && prevBB->lidarPoints.size() > 0 ) 
+        {
+            return std::make_tuple(currBB, prevBB);
+        }
     }
+
+    return std::make_tuple(nullptr, nullptr);
 }
 
 Calibration InitializeCalibration()
@@ -235,8 +248,15 @@ int main(int argc, const char *argv[])
             // store matches in current data frame
             currentFrame->bbMatches = bbBestMatches;
 
-            // loop over all BB match pairs to compute time to collision (TTC)
-            ComputeAllTTCs(*lastFrame, *currentFrame, sensorFrameRate, cal);
+            const BoundingBox* currBB = nullptr;
+            const BoundingBox* prevBB = nullptr;
+            std::tie(currBB, prevBB) = FindEgoLaneBoundingBoxes(*lastFrame, *currentFrame);
+
+            if (currBB != nullptr && prevBB != nullptr)
+            {
+                // compute lidar and camera TTC for the bounding box corresponding to vehicle in ego lane
+                ComputeTTC(*prevBB, *currBB, sensorFrameRate, cal);
+            }
         }
     }
     return 0;

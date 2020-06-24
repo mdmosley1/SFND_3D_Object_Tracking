@@ -155,10 +155,13 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox,
 
 // Compute time-to-collision (TTC) based on keypoint correspondences in successive images
 double computeTTCCamera(const std::vector<cv::KeyPoint> &kptsPrev,
-                      const std::vector<cv::KeyPoint> &kptsCurr,
-                      const std::vector<cv::DMatch> kptMatches,
+                        const std::vector<cv::KeyPoint> &kptsCurr,
+                        const std::vector<cv::DMatch> kptMatches,
                         const double frameRate)
 {
+    assert(!kptsPrev.empty());
+    assert(!kptsCurr.empty());
+    assert(!kptMatches.empty());
     double TTC = 0.0;
     // compute distance ratios between all matched keypoints
     vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
