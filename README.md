@@ -18,7 +18,7 @@ Camera-based TTC was determined by computing distance ratios between feature pai
 
 ## FP.5 Performance Evaluation 1: Lidar TTC
 There are some instances where the TTC increases from one frame to the
-next, even though this is probably innaccurate. One contributing
+next, even though this is probably inaccurate. One contributing
 factor is that we are using a constant velocity model for the vehicle,
 despite the fact that the vehicle is gradually slowing down throughout
 the duration of the dataset. Another factor is that the median lidar
