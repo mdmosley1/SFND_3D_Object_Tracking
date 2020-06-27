@@ -67,26 +67,37 @@ void UpdateDisplay(cv::Mat visImg,
     cv::vconcat(visImg, topviewImg, bigMat);
     
                         
-    char str[200];
-    sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcResults.lidar, ttcResults.camera);
-    putText(bigMat, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
+    char str1[200];
+    char str2[200];
+    sprintf(str1, "TTC Lidar : %f s", ttcResults.lidar);
+    sprintf(str2, "TTC Camera : %f s", ttcResults.camera);
+    putText(bigMat, str1, cv::Point2f(30, 410), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
+    putText(bigMat, str2, cv::Point2f(30, 440), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
 
     // write frame number to img
     static int frameNum = 0;
     std::string infoString = "Frame#: " + std::to_string(frameNum);
-    putText(bigMat, infoString, cv::Point2f(80, 500), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
+    putText(bigMat, infoString, cv::Point2f(50, 500), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
 
     string windowName = "Final Results : TTC";
     cv::namedWindow(windowName, 4);
     cv::imshow(windowName, bigMat);
 
+    // use this imagemagick command to convert images to a gif: convert -delay 20 *jpg -loop 0 movie.gif
     // write img to file
+    ostringstream imgNumber;
+    int fnameFillWidth = 2;
+    imgNumber << setfill('0') << setw(fnameFillWidth) << frameNum;
+    std::string imgPrefix = "img_";
+    std::string imgFileType = ".jpg";
+    string fname = imgPrefix + imgNumber.str() + imgFileType;   
+
     
-    std::string fname = "img_" + std::to_string(frameNum) + ".jpg";
     cv::imwrite(fname , bigMat);
+    cv::waitKey(10);
     
-    cout << "Press key to continue to next frame" << endl;
-    cv::waitKey(0);
+    //cout << "Press key to continue to next frame" << endl;
+    //cv::waitKey(0);
 
     frameNum++;
 }
