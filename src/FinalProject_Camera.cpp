@@ -63,35 +63,65 @@ void AddToRingBuffer(const DataFrame& frame)
         dataBuffer_g.erase(dataBuffer_g.begin());
 }
 
-void ComputeTTC(const BoundingBox& prevBB, const BoundingBox& _currBB, const double sensorFrameRate, const Calibration& cal)
+struct TTCResults
+{
+    double camera;
+    double lidar;
+};
+
+TTCResults ComputeTTC(const BoundingBox& prevBB,
+                const BoundingBox& _currBB,
+                const double sensorFrameRate)
 {
     // make copy since this gets modified to add kpts 
     BoundingBox currBB = _currBB;
     
-    double ttcLidar = computeTTCLidar(prevBB.lidarPoints, currBB.lidarPoints, sensorFrameRate);
+    double ttcLidar = computeTTCLidar(prevBB.lidarPoints,
+                                      currBB.lidarPoints,
+                                      sensorFrameRate);
     cout << "TTC lidar = " << ttcLidar << "\n";
 
-    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints, (dataBuffer_g.end() - 1)->kptMatches);
-    double ttcCamera = computeTTCCamera((dataBuffer_g.end() - 2)->keypoints, (dataBuffer_g.end() - 1)->keypoints,currBB.kptMatches,sensorFrameRate);
+    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints,
+                             (dataBuffer_g.end() - 1)->keypoints,
+                             (dataBuffer_g.end() - 1)->kptMatches);
+    double ttcCamera = computeTTCCamera((dataBuffer_g.end() - 2)->keypoints,
+                                        (dataBuffer_g.end() - 1)->keypoints,
+                                        currBB.kptMatches,sensorFrameRate);
     cout << "TTC camera = " << ttcCamera << "\n";
-    
-    bool bVis = true;
-    if (bVis)
-    {
-        cv::Mat visImg = (dataBuffer_g.end() - 1)->cameraImg.clone();
-        showLidarImgOverlay(visImg, currBB.lidarPoints, cal.P_rect_00, cal.R_rect_00, cal.RT, &visImg);
-        cv::rectangle(visImg, cv::Point(currBB.roi.x, currBB.roi.y), cv::Point(currBB.roi.x + currBB.roi.width, currBB.roi.y + currBB.roi.height), cv::Scalar(0, 255, 0), 2);
-                        
-        char str[200];
-        sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcLidar, ttcCamera);
-        putText(visImg, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
 
-        string windowName = "Final Results : TTC";
-        cv::namedWindow(windowName, 4);
-        cv::imshow(windowName, visImg);
-        cout << "Press key to continue to next frame" << endl;
-        cv::waitKey(0);
-    }
+    TTCResults results;
+    results.camera = ttcCamera;
+    results.lidar = ttcLidar;
+    return results;
+}
+
+
+void UpdateDisplay(cv::Mat visImg,
+                   const BoundingBox& currBB,
+                   const Calibration& cal,
+                   const TTCResults& ttcResults)
+{
+    
+    showLidarImgOverlay(visImg,
+                        currBB.lidarPoints,
+                        cal.P_rect_00,
+                        cal.R_rect_00,
+                        cal.RT,
+                        &visImg);
+    cv::rectangle(visImg,
+                  cv::Point(currBB.roi.x, currBB.roi.y),
+                  cv::Point(currBB.roi.x + currBB.roi.width,currBB.roi.y + currBB.roi.height),
+                  cv::Scalar(0, 255, 0), 2);
+                        
+    char str[200];
+    sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcResults.lidar, ttcResults.camera);
+    putText(visImg, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
+
+    string windowName = "Final Results : TTC";
+    cv::namedWindow(windowName, 4);
+    cv::imshow(windowName, visImg);
+    cout << "Press key to continue to next frame" << endl;
+    cv::waitKey(0);
 }
 
 BoundingBox const* GetBoxWithID(const DataFrame& frame, int id)
@@ -234,12 +264,15 @@ int main(int argc, const char *argv[])
         newFrame.boundingBoxes = boundingBoxes;
         
         AddToRingBuffer(newFrame);
-        
+
+        // TODO: refactor below into separate function
+        // Make databuffer a class with getter method for getting most recent frame
         if (dataBuffer_g.size() > 1) // wait until at least two images have been processed
         {
             auto lastFrame = dataBuffer_g.end() - 2;
             auto currentFrame = dataBuffer_g.end() - 1;
-            currentFrame->kptMatches = featureTracker.TrackFeatures(*lastFrame, *currentFrame);
+            currentFrame->kptMatches = featureTracker.TrackFeatures(*lastFrame,
+                                                                    *currentFrame);
 
             // TRACK 3D OBJECT BOUNDING BOXES
             // associate bounding boxes between current and previous frame using keypoint matches
@@ -250,12 +283,17 @@ int main(int argc, const char *argv[])
 
             const BoundingBox* currBB = nullptr;
             const BoundingBox* prevBB = nullptr;
-            std::tie(currBB, prevBB) = FindEgoLaneBoundingBoxes(*lastFrame, *currentFrame);
+            std::tie(currBB, prevBB) = FindEgoLaneBoundingBoxes(*lastFrame,
+                                                                *currentFrame);
 
             if (currBB != nullptr && prevBB != nullptr)
             {
-                // compute lidar and camera TTC for the bounding box corresponding to vehicle in ego lane
-                ComputeTTC(*prevBB, *currBB, sensorFrameRate, cal);
+                // compute lidar and camera TTC for the bounding box
+                // corresponding to vehicle in ego lane
+                TTCResults results = ComputeTTC(*prevBB, *currBB, sensorFrameRate);
+
+                cv::Mat visImg = (dataBuffer_g.end() - 1)->cameraImg.clone();
+                UpdateDisplay(visImg, *currBB, cal, results);
             }
         }
     }
