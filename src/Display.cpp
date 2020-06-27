@@ -153,13 +153,13 @@ cv::Mat DrawLidarTopviewMat(std::vector<BoundingBox> &boundingBoxes, cv::Size wo
     }
 
     // plot distance markers
-    float lineSpacing = 2.0; // gap between distance markers
-    int nMarkers = floor(worldSize.height / lineSpacing);
-    for (size_t i = 0; i < nMarkers; ++i)
-    {
-        int y = (-(i * lineSpacing) * imageSize.height / worldSize.height) + imageSize.height;
-        cv::line(topviewImg, cv::Point(0, y), cv::Point(imageSize.width, y), cv::Scalar(255, 0, 0));
-    }
+    // float lineSpacing = 2.0; // gap between distance markers
+    // int nMarkers = floor(worldSize.height / lineSpacing);
+    // for (size_t i = 0; i < nMarkers; ++i)
+    // {
+    //     int y = (-(i * lineSpacing) * imageSize.height / worldSize.height) + imageSize.height;
+    //     cv::line(topviewImg, cv::Point(0, y), cv::Point(imageSize.width, y), cv::Scalar(255, 0, 0));
+    // }
 
     return topviewImg;
 }

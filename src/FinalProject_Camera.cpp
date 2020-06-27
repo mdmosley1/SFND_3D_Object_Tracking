@@ -42,7 +42,8 @@ void AddToRingBuffer(const DataFrame& frame)
 void UpdateDisplay(cv::Mat visImg,
                    const BoundingBox& currBB,
                    const Calibration& cal,
-                   const TTCResults& ttcResults)
+                   const TTCResults& ttcResults,
+                   const cv::Mat& topviewImg)
 {
     // draw lidar points on top of camera image
     showLidarImgOverlay(visImg,
@@ -57,16 +58,37 @@ void UpdateDisplay(cv::Mat visImg,
                   cv::Point(currBB.roi.x, currBB.roi.y),
                   cv::Point(currBB.roi.x + currBB.roi.width,currBB.roi.y + currBB.roi.height),
                   cv::Scalar(0, 255, 0), 2);
+
+
+    // combine the topview and camera images
+    cv::Mat bigMat;
+    cv::Mat topviewImgResized;
+    //cv::resize(topviewImg, topviewImgResized, visImg.size());
+    cv::vconcat(visImg, topviewImg, bigMat);
+    
                         
     char str[200];
     sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcResults.lidar, ttcResults.camera);
-    putText(visImg, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
+    putText(bigMat, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
+
+    // write frame number to img
+    static int frameNum = 0;
+    std::string infoString = "Frame#: " + std::to_string(frameNum);
+    putText(bigMat, infoString, cv::Point2f(80, 500), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
 
     string windowName = "Final Results : TTC";
     cv::namedWindow(windowName, 4);
-    cv::imshow(windowName, visImg);
+    cv::imshow(windowName, bigMat);
+
+    // write img to file
+    
+    std::string fname = "img_" + std::to_string(frameNum) + ".jpg";
+    cv::imwrite(fname , bigMat);
+    
     cout << "Press key to continue to next frame" << endl;
     cv::waitKey(0);
+
+    frameNum++;
 }
 
 
@@ -166,8 +188,9 @@ int main(int argc, const char *argv[])
         auto boundingBoxes = GetClassifiedBoundingBoxesFromImage(img);
         auto lidarPoints = GetCroppedLidarPoints(imgIndex); 
         AddLidarPointsToBoxes(boundingBoxes, lidarPoints, shrinkFactor, cal);
-        
-        cv::Mat topviewImg = DrawLidarTopviewMat(boundingBoxes, cv::Size(10.0, 20.0), cv::Size(900,900), true);
+
+        // draw topview image with same size as camera img 
+        cv::Mat topviewImg = DrawLidarTopviewMat(boundingBoxes, cv::Size(10.0, 20.0), img.size(), true);
 
         DataFrame newFrame = DetectAndDescribeFeatures(img, detector, descriptor, params);
         newFrame.boundingBoxes = boundingBoxes;
@@ -190,7 +213,7 @@ int main(int argc, const char *argv[])
                                                               *currentFrame);
 
                 cv::Mat visImg = (dataBuffer_g.end() - 1)->cameraImg.clone();
-                UpdateDisplay(visImg, *bboxPair.curr, cal, results);
+                UpdateDisplay(visImg, *bboxPair.curr, cal, results, topviewImg);
             }
         }
     }
