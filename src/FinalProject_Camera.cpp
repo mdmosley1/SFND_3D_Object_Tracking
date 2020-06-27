@@ -24,6 +24,7 @@
 #include "ObjectTracker3D.h"
 #include "TTCCalculator.h"
 #include "constants.h"
+#include "Display.h"
 
 using namespace std;
 
@@ -43,13 +44,15 @@ void UpdateDisplay(cv::Mat visImg,
                    const Calibration& cal,
                    const TTCResults& ttcResults)
 {
-    
+    // draw lidar points on top of camera image
     showLidarImgOverlay(visImg,
                         currBB.lidarPoints,
                         cal.P_rect_00,
                         cal.R_rect_00,
                         cal.RT,
                         &visImg);
+
+    // draw the car's bounding box on image
     cv::rectangle(visImg,
                   cv::Point(currBB.roi.x, currBB.roi.y),
                   cv::Point(currBB.roi.x + currBB.roi.width,currBB.roi.y + currBB.roi.height),
@@ -163,8 +166,9 @@ int main(int argc, const char *argv[])
         auto boundingBoxes = GetClassifiedBoundingBoxesFromImage(img);
         auto lidarPoints = GetCroppedLidarPoints(imgIndex); 
         AddLidarPointsToBoxes(boundingBoxes, lidarPoints, shrinkFactor, cal);
-        //if(true) show3DObjects(boundingBoxes, cv::Size(4.0, 20.0), cv::Size(900,900), true);
-        if(true) show3DObjects(boundingBoxes, cv::Size(10.0, 20.0), cv::Size(900,900), true);        
+        
+        cv::Mat topviewImg = DrawLidarTopviewMat(boundingBoxes, cv::Size(10.0, 20.0), cv::Size(900,900), true);
+
         DataFrame newFrame = DetectAndDescribeFeatures(img, detector, descriptor, params);
         newFrame.boundingBoxes = boundingBoxes;
         AddToRingBuffer(newFrame);
