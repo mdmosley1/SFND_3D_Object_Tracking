@@ -21,78 +21,20 @@
 #include "SettingsParser.h" // LoadParamsFromFile, Params
 #include "util.h" // CreateDetector, CreateDescriptor
 #include "FeatureTracker.h" // FeatureTracker
+#include "ObjectTracker3D.h"
+#include "TTCCalculator.h"
+#include "constants.h"
 
 using namespace std;
 
 int dataBufferSize_g = 2;       // no. of images which are held in memory (ring buffer) at the same time
 vector<DataFrame> dataBuffer_g; // list of data frames which are held in memory at the same time
 
-// #################### CONSTANTS ###############################
-// data location
-string dataPath = "../";
-
-// camera
-string imgBasePath = dataPath + "images/";
-string imgPrefix = "KITTI/2011_09_26/image_02/data/000000"; // left camera, color
-string imgFileType = ".png";
-int imgStartIndex = 0; // first file index to load (assumes Lidar and camera names have identical naming convention)
-int imgEndIndex = 45;   // last file index to load
-int imgStepWidth = 1; 
-int imgFillWidth = 4;  // no. of digits which make up the file index (e.g. img-0001.png)
-
-// object detection
-string yoloBasePath = dataPath + "dat/yolo/";
-string yoloClassesFile = yoloBasePath + "coco.names";
-string yoloModelConfiguration = yoloBasePath + "yolov3.cfg";
-string yoloModelWeights = yoloBasePath + "yolov3.weights";
-
-// Lidar
-string lidarPrefix = "KITTI/2011_09_26/velodyne_points/data/000000";
-string lidarFileType = ".bin";
-
-// associate Lidar points with camera-based ROI
-float shrinkFactor = 0.10; // shrinks each bounding box by the given percentage to avoid 3D object merging at the edges of an ROI
-// ############## END OF CONSTANTS #####################
-
-
-
 void AddToRingBuffer(const DataFrame& frame)
 {
     dataBuffer_g.push_back(frame);
     while (dataBuffer_g.size() > dataBufferSize_g)
         dataBuffer_g.erase(dataBuffer_g.begin());
-}
-
-struct TTCResults
-{
-    double camera;
-    double lidar;
-};
-
-TTCResults ComputeTTC(const BoundingBox& prevBB,
-                const BoundingBox& _currBB,
-                const double sensorFrameRate)
-{
-    // make copy since this gets modified to add kpts 
-    BoundingBox currBB = _currBB;
-    
-    double ttcLidar = computeTTCLidar(prevBB.lidarPoints,
-                                      currBB.lidarPoints,
-                                      sensorFrameRate);
-    cout << "TTC lidar = " << ttcLidar << "\n";
-
-    clusterKptMatchesWithROI(currBB, (dataBuffer_g.end() - 2)->keypoints,
-                             (dataBuffer_g.end() - 1)->keypoints,
-                             (dataBuffer_g.end() - 1)->kptMatches);
-    double ttcCamera = computeTTCCamera((dataBuffer_g.end() - 2)->keypoints,
-                                        (dataBuffer_g.end() - 1)->keypoints,
-                                        currBB.kptMatches,sensorFrameRate);
-    cout << "TTC camera = " << ttcCamera << "\n";
-
-    TTCResults results;
-    results.camera = ttcCamera;
-    results.lidar = ttcLidar;
-    return results;
 }
 
 
@@ -124,37 +66,6 @@ void UpdateDisplay(cv::Mat visImg,
     cv::waitKey(0);
 }
 
-BoundingBox const* GetBoxWithID(const DataFrame& frame, int id)
-{
-    for (auto& box : frame.boundingBoxes)
-        if (box.boxID == id) // check whether current match partner corresponds to this BB
-            return &box;
-    return nullptr;
-}
-
-std::tuple<const BoundingBox*,const BoundingBox*> FindEgoLaneBoundingBoxes(const DataFrame& lastFrame,
-                                                               const DataFrame& newFrame)
-{
-    for (auto it1 = newFrame.bbMatches.begin(); it1 != newFrame.bbMatches.end(); ++it1)
-    {
-        // find bounding boxes associates with current match
-        const BoundingBox* currBB = GetBoxWithID(newFrame, it1->second);
-        const BoundingBox* prevBB = GetBoxWithID(lastFrame, it1->first);
-        
-        if (currBB == nullptr || prevBB == nullptr)
-            continue;
-
-        // We are only interested in the bounding boxes which have
-        // lidar points, since these correspond to the vehicle in the
-        // ego lane
-        if( currBB->lidarPoints.size() > 0 && prevBB->lidarPoints.size() > 0 ) 
-        {
-            return std::make_tuple(currBB, prevBB);
-        }
-    }
-
-    return std::make_tuple(nullptr, nullptr);
-}
 
 Calibration InitializeCalibration()
 {
@@ -231,19 +142,18 @@ cv::Mat GetNextImage(const size_t _index)
     return cv::imread(imgFullFilename);
 }
 
-
 /* MAIN PROGRAM */
 int main(int argc, const char *argv[])
 {
-    Calibration cal = InitializeCalibration();
-
-    double sensorFrameRate = 10.0 / imgStepWidth; // frames per second for Lidar and camera
+    Calibration cal = InitializeCalibration();    
     
     auto params = LoadParamsFromFile("../src/settings.txt");
     auto detector = CreateDetector(params.detectorType);
     auto descriptor = CreateDescriptor(params.descriptorType);
 
     FeatureTracker featureTracker(params);
+    ObjectTracker3D objectTracker(featureTracker);
+    TTCCalculator ttcCalculator;
 
     for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
     {
@@ -251,49 +161,32 @@ int main(int argc, const char *argv[])
         cv::Mat img = GetNextImage(imgIndex);        
 
         auto boundingBoxes = GetClassifiedBoundingBoxesFromImage(img);
-
         auto lidarPoints = GetCroppedLidarPoints(imgIndex); 
-        
         AddLidarPointsToBoxes(boundingBoxes, lidarPoints, shrinkFactor, cal);
-
         //if(true) show3DObjects(boundingBoxes, cv::Size(4.0, 20.0), cv::Size(900,900), true);
         if(true) show3DObjects(boundingBoxes, cv::Size(10.0, 20.0), cv::Size(900,900), true);        
-        
         DataFrame newFrame = DetectAndDescribeFeatures(img, detector, descriptor, params);
-
         newFrame.boundingBoxes = boundingBoxes;
-        
         AddToRingBuffer(newFrame);
 
-        // TODO: refactor below into separate function
-        // Make databuffer a class with getter method for getting most recent frame
         if (dataBuffer_g.size() > 1) // wait until at least two images have been processed
         {
             auto lastFrame = dataBuffer_g.end() - 2;
             auto currentFrame = dataBuffer_g.end() - 1;
-            currentFrame->kptMatches = featureTracker.TrackFeatures(*lastFrame,
-                                                                    *currentFrame);
+            BBoxPair bboxPair = objectTracker.ProcessImagePair(*lastFrame, *currentFrame);
 
-            // TRACK 3D OBJECT BOUNDING BOXES
-            // associate bounding boxes between current and previous frame using keypoint matches
-            map<int, int> bbBestMatches = matchBoundingBoxes(*lastFrame, *currentFrame); 
-
-            // store matches in current data frame
-            currentFrame->bbMatches = bbBestMatches;
-
-            const BoundingBox* currBB = nullptr;
-            const BoundingBox* prevBB = nullptr;
-            std::tie(currBB, prevBB) = FindEgoLaneBoundingBoxes(*lastFrame,
-                                                                *currentFrame);
-
-            if (currBB != nullptr && prevBB != nullptr)
+            if (bboxPair.curr != nullptr && bboxPair.prev != nullptr)
             {
                 // compute lidar and camera TTC for the bounding box
                 // corresponding to vehicle in ego lane
-                TTCResults results = ComputeTTC(*prevBB, *currBB, sensorFrameRate);
+                TTCResults results = ttcCalculator.ComputeTTC(*bboxPair.prev,
+                                                              *bboxPair.curr,
+                                                              sensorFrameRate,
+                                                              *lastFrame,
+                                                              *currentFrame);
 
                 cv::Mat visImg = (dataBuffer_g.end() - 1)->cameraImg.clone();
-                UpdateDisplay(visImg, *currBB, cal, results);
+                UpdateDisplay(visImg, *bboxPair.curr, cal, results);
             }
         }
     }
