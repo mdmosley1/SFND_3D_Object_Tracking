@@ -95,9 +95,13 @@ void UpdateDisplay(cv::Mat visImg,
     
     cv::imwrite(fname , bigMat);
     cv::waitKey(10);
+
+    if (true)
+    {
+        cout << "Press key to continue to next frame" << endl;
+        cv::waitKey(0);
+    }
     
-    //cout << "Press key to continue to next frame" << endl;
-    //cv::waitKey(0);
 
     frameNum++;
 }

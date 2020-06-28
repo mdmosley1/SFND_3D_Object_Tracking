@@ -16,6 +16,7 @@ double computeTTCCamera(const std::vector<cv::KeyPoint> &kptsPrev,
     double TTC = 0.0;
     // compute distance ratios between all matched keypoints
     vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
+    cout << "\n#### PRINTING DISTANCE RATIOS" << "\n";
     for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1)
     { // outer kpt. loop
 
@@ -36,6 +37,12 @@ double computeTTCCamera(const std::vector<cv::KeyPoint> &kptsPrev,
             double distCurr = cv::norm(kpOuterCurr.pt - kpInnerCurr.pt);
             double distPrev = cv::norm(kpOuterPrev.pt - kpInnerPrev.pt);
 
+            if (kpInnerCurr.pt == kpInnerPrev.pt ||
+                kpOuterCurr.pt == kpOuterPrev.pt)
+            {
+                // skip if duplicate points are being used which would result in ratio of 1
+                continue;
+            }
             if (distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
             { // avoid division by zero
 
@@ -59,11 +66,10 @@ double computeTTCCamera(const std::vector<cv::KeyPoint> &kptsPrev,
     std::sort(distRatios.begin(), distRatios.end());
     double medianDistRatio = distRatios[distRatios.size()/2];
 
-    // cout << "mean is : " << meanDistRatio << "\n";
-    // cout << "median is : " << medianDistRatio << "\n";
-
     double dT = 1 / frameRate;
     TTC = -dT / (1 - medianDistRatio);
+
+
     return TTC;
 }
 
