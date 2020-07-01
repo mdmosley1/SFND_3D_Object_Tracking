@@ -182,6 +182,11 @@ cv::Mat GetNextImage(const size_t _index)
     return cv::imread(imgFullFilename);
 }
 
+void WriteToCSV(std::ofstream& fs, const TTCResults& results)
+{
+    fs << results.lidar << ","<< results.camera << std::endl; 
+}
+
 /* MAIN PROGRAM */
 int main(int argc, const char *argv[])
 {
@@ -194,6 +199,10 @@ int main(int argc, const char *argv[])
     FeatureTracker featureTracker(params);
     ObjectTracker3D objectTracker(featureTracker);
     TTCCalculator ttcCalculator;
+
+    std::ofstream fileWriter;
+    fileWriter.open("/tmp/sensor-fusion-camera.csv");
+    fileWriter << "lidarTTC,CameraTTC" << std::endl;
 
     for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
     {
@@ -229,8 +238,10 @@ int main(int argc, const char *argv[])
 
                 cv::Mat visImg = (dataBuffer_g.end() - 1)->cameraImg.clone();
                 UpdateDisplay(visImg, *bboxPair.curr, cal, results, topviewImg);
+                WriteToCSV(fileWriter, results);
             }
         }
     }
+    fileWriter.close();
     return 0;
 }

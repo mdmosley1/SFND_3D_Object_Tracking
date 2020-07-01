@@ -22,6 +22,9 @@ private:
     void VisualizeMatches(const DataFrame& lastFrame,
                           const DataFrame& newFrame,
                           const std::vector<cv::DMatch> matches);
+    void VisualizeMatches2(const DataFrame& lastFrame,
+                          const DataFrame& newFrame,
+                          const std::vector<cv::DMatch> matches);
     std::vector<cv::DMatch> matchDescriptors(const std::vector<cv::KeyPoint> &kPtsSource,
                                              const std::vector<cv::KeyPoint> &kPtsRef,
                                              const cv::Mat &descSource,

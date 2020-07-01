@@ -63,7 +63,7 @@ vector<cv::DMatch> FeatureTracker::TrackFeatures(const DataFrame& lastFrame, con
         
     cout << "#7 : MATCH KEYPOINT DESCRIPTORS done" << endl;
     // visualize matches between current and previous image
-    if (params_m.visualizeMatches) VisualizeMatches(lastFrame, newFrame, matches);
+    if (params_m.visualizeMatches) VisualizeMatches2(lastFrame, newFrame, matches);
     
     return matches;
 }
@@ -113,6 +113,26 @@ std::vector<cv::DMatch> FeatureTracker::matchDescriptors(const std::vector<cv::K
         matches = ConvertMatches(knnMatches);
     }
     return matches;
+}
+
+// Better visualize matches function that draw one image and draws
+// line from previous location to current location for each feature
+void FeatureTracker::VisualizeMatches2(const DataFrame& lastFrame, const DataFrame& newFrame, const vector<cv::DMatch> matches)
+{
+    cv::Mat matchImg = newFrame.cameraImg.clone();
+
+    for (auto match : matches)
+    {
+        auto pt1 = lastFrame.keypoints[match.queryIdx].pt;
+        auto pt2 = newFrame.keypoints[match.trainIdx].pt;
+        cv::line(matchImg, pt1, pt2, cv::Scalar(0,0,255));
+    }
+
+    string windowName = "Matching keypoints between two camera images";
+    cv::namedWindow(windowName, 7);
+    cv::imshow(windowName, matchImg);
+    cout << "Press key to continue to next image" << endl;
+    //cv::waitKey(params_m.cvWaitTime); // wait for key to be pressed
 }
 
 void FeatureTracker::VisualizeMatches(const DataFrame& lastFrame, const DataFrame& newFrame, const vector<cv::DMatch> matches)

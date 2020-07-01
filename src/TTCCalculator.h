@@ -6,6 +6,7 @@
 
 struct TTCResults
 {
+    TTCResults() : camera(0.0), lidar(0.0) {}
     double camera;
     double lidar;
 };
