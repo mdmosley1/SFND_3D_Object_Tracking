@@ -20,20 +20,16 @@ Camera-based TTC was determined by computing distance ratios between feature pai
 
 ## FP.5 Performance Evaluation 1: Lidar TTC
 There are some instances where the TTC increases from one frame to the
-next, even though this is probably inaccurate. One contributing
+next, even though this is probably inaccurate. See the plot at the end of the readme where the camera TTC and lidar TTC are plotted agains the frame number. One contributing
 factor is that we are using a constant velocity model for the vehicle,
 despite the fact that the vehicle is gradually slowing down throughout
 the duration of the dataset. Another factor is that the median lidar
 point does not always capture the same physical location on the
-vehicle every frame.
+vehicle every frame. 
 
 ## FP.6 Performance Evaluation 2: Camera TTC
 Based on experimentation, using a combination of the ORB feature
 detector and the BRISK feature descriptor yields the most accurate
-results. There are, however, a few cases where the camera TTC is
-drastically different from the lidar TTC. I attribute this to
-occasional bad feature matches across frames. For the most part, these
-can be remedied by taking the median distance ratio. But there are a
-few bad frames where even this does not help.
+results. There are, however, a few cases where the camera TTC is very large, such as in frame 3. I think this happened because the features in the image barely moved between those frames. I think this problem could be mitigated by skipping every other camera frame.
 
 ![](results/octave-figure1.png)
