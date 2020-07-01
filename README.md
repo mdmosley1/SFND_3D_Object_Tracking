@@ -35,3 +35,5 @@ drastically different from the lidar TTC. I attribute this to
 occasional bad feature matches across frames. For the most part, these
 can be remedied by taking the median distance ratio. But there are a
 few bad frames where even this does not help.
+
+![](results/octave-figure1.png)
