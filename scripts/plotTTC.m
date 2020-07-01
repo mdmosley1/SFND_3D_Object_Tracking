@@ -13,3 +13,7 @@ plot(lidarTTC); hold all;
 plot(cameraTTC);
 legend("lidar TTC", "cameraTTC");
 grid on
+xlabel("Frame number")
+ylabel("TTC (seconds)");
+ylim([0,60])
+title("Time to collision (TTC) for lidar and camera")
